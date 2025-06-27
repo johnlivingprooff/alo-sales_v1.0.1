@@ -1,4 +1,4 @@
-# 🧭 Lead Tracker Dashboard
+# 🧭 Alo Lead Tracker Dashboard
 
 **A lightweight, secure, and efficient sales lead tracking system built with React and Supabase.**
 
