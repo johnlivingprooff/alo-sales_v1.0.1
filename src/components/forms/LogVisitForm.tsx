@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,19 +13,35 @@ import { format, isFuture, isPast } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { ClientSearchInput } from "./ClientSearchInput";
+import { createClientSafely } from "@/lib/clientValidation";
 
 interface LogVisitFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialValues?: {
+    company_name?: string;
+    contact_person?: string;
+    contact_email?: string;
+  };
 }
 
-export const LogVisitForm = ({ open, onOpenChange }: LogVisitFormProps) => {
+interface Client {
+  id: string;
+  company_name: string;
+  contact_person: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+}
+
+export const LogVisitForm = ({ open, onOpenChange, initialValues }: LogVisitFormProps) => {
   const { user } = useAuth();
   const [date, setDate] = useState<Date>(new Date());
   const [time, setTime] = useState<string>("09:00");
-  const [companyName, setCompanyName] = useState("");
-  const [contactPerson, setContactPerson] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
+  const [companyName, setCompanyName] = useState(initialValues?.company_name || "");
+  const [contactPerson, setContactPerson] = useState(initialValues?.contact_person || "");
+  const [contactEmail, setContactEmail] = useState(initialValues?.contact_email || "");
   const [visitType, setVisitType] = useState<"cold_call" | "follow_up" | "presentation" | "meeting" | "phone_call">("cold_call");
   const [durationMinutes, setDurationMinutes] = useState("");
   const [outcome, setOutcome] = useState("");
@@ -36,9 +52,28 @@ export const LogVisitForm = ({ open, onOpenChange }: LogVisitFormProps) => {
   const [sendEmailReminder, setSendEmailReminder] = useState(false);
   const [addToCalendar, setAddToCalendar] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
   const isScheduled = isFuture(date);
   const isCompleted = isPast(date) || date.toDateString() === new Date().toDateString();
+
+  // Update form when initialValues change
+  useEffect(() => {
+    if (initialValues) {
+      setCompanyName(initialValues.company_name || "");
+      setContactPerson(initialValues.contact_person || "");
+      setContactEmail(initialValues.contact_email || "");
+    }
+  }, [initialValues]);
+
+  const handleClientSelect = (client: Client | null) => {
+    setSelectedClient(client);
+    if (client) {
+      setCompanyName(client.company_name);
+      setContactPerson(client.contact_person || "");
+      setContactEmail(client.email || "");
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,18 +138,21 @@ export const LogVisitForm = ({ open, onOpenChange }: LogVisitFormProps) => {
           .from('leads')
           .insert(leadData);
 
-        const { error: clientError } = await supabase
-          .from('clients')
-          .insert(clientData);
+        // Use safe client creation with duplicate checking
+        const clientResult = await createClientSafely(clientData, {
+          returnExistingIfDuplicate: true // Return existing client if duplicate found
+        });
 
         if (leadError) {
           console.warn('Failed to create lead:', leadError);
           toast.warning("Visit saved but failed to create lead automatically");
         }
 
-        if (clientError) {
-          console.warn('Failed to create client:', clientError);
+        if (!clientResult.success && !clientResult.isDuplicate) {
+          console.warn('Failed to create client:', clientResult.error);
           toast.warning("Visit saved but failed to create client automatically");
+        } else if (clientResult.isDuplicate) {
+          console.log('Client already exists, using existing client');
         }
       }
 
@@ -196,9 +234,9 @@ export const LogVisitForm = ({ open, onOpenChange }: LogVisitFormProps) => {
   };
 
   const resetForm = () => {
-    setCompanyName("");
-    setContactPerson("");
-    setContactEmail("");
+    setCompanyName(initialValues?.company_name || "");
+    setContactPerson(initialValues?.contact_person || "");
+    setContactEmail(initialValues?.contact_email || "");
     setVisitType("cold_call");
     setDurationMinutes("");
     setOutcome("");
@@ -210,6 +248,7 @@ export const LogVisitForm = ({ open, onOpenChange }: LogVisitFormProps) => {
     setAddToCalendar(false);
     setDate(new Date());
     setTime("09:00");
+    setSelectedClient(null);
   };
 
   return (
@@ -259,11 +298,11 @@ export const LogVisitForm = ({ open, onOpenChange }: LogVisitFormProps) => {
 
           <div className="space-y-2">
             <Label htmlFor="companyName">Company Name</Label>
-            <Input
-              id="companyName"
+            <ClientSearchInput
               value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              required
+              onValueChange={setCompanyName}
+              onClientSelect={handleClientSelect}
+              placeholder="Search existing clients or type company name..."
             />
           </div>
 

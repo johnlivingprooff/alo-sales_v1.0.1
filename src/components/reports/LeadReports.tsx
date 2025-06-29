@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ReportFilters } from "./ReportFilters";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { exportBrandedCSV, exportTableToPDF, escapeCSV, formatCurrency } from "@/lib/exportUtils";
+import { REPORT_TITLES } from "@/lib/brandingConfig";
 import { getUserCurrencyContext, convertCurrency } from "@/lib/currency";
 
 type LeadStatus = "all" | "new" | "contacted" | "qualified" | "proposal" | "negotiation" | "closed_won" | "closed_lost";
@@ -98,28 +100,32 @@ export const LeadReports = () => {
       return;
     }
 
-    const csvContent = [
-      ['Date', 'Company', 'Contact', 'Source', 'Status', 'Est. Revenue', 'Currency', 'Sales Rep'].join(','),
-      ...leads.map(lead => [
-        format(new Date(lead.created_at), 'yyyy-MM-dd'),
-        `"${lead.company_name}"`,
-        `"${lead.contact_name}"`,
-        lead.source,
-        lead.status,
-        lead.estimated_revenue || 0,
-        lead.currency || 'USD',
-        `"${lead.profiles?.full_name || lead.profiles?.email || 'Unknown'}"`
-      ].join(','))
-    ].join('\n');
+    const csvData = leads.map(lead => [
+      format(new Date(lead.created_at), 'yyyy-MM-dd'),
+      escapeCSV(lead.company_name),
+      escapeCSV(lead.contact_name),
+      escapeCSV(lead.source),
+      escapeCSV(lead.status),
+      formatCurrency(lead.estimated_revenue || 0, lead.currency),
+      escapeCSV(lead.profiles?.full_name || lead.profiles?.email || 'Unknown')
+    ].join(','));
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `lead-report-${format(new Date(), 'yyyy-MM-dd')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Report exported successfully!");
+    exportBrandedCSV(
+      csvData,
+      ['Date', 'Company', 'Contact', 'Source', 'Status', 'Est. Revenue', 'Sales Rep'],
+      'lead-report',
+      REPORT_TITLES.leads,
+      dateRange
+    );
+  };
+
+  const exportReportPDF = async () => {
+    await exportTableToPDF(
+      'leads-table',
+      'lead-report',
+      REPORT_TITLES.leads,
+      dateRange
+    );
   };
 
   const getStatusColor = (status: string) => {
@@ -146,6 +152,7 @@ export const LeadReports = () => {
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
         onExport={exportReport}
+        onExportPDF={exportReportPDF}
         exportLabel="Export Lead Report"
         additionalFilters={
           <>
@@ -211,7 +218,7 @@ export const LeadReports = () => {
         {isLoading ? (
           <div className="flex items-center justify-center h-64">Loading...</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" id="leads-table">
             <Table>
               <TableHeader>
                 <TableRow>

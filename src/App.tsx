@@ -14,6 +14,8 @@ import Reports from "./pages/Reports";
 import ManageUsers from "./pages/ManageUsers";
 import ManageTeam from "./pages/ManageTeam";
 import Admin from "./pages/Admin";
+import { ConversionsPage } from "./pages/Conversions";
+import { Clients } from "./pages/Clients";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,6 +48,16 @@ function App() {
                 <Route path="/reports" element={
                   <ProtectedRoute>
                     <Reports />
+                  </ProtectedRoute>
+                } />
+                <Route path="/conversions" element={
+                  <ProtectedRoute requiredRoles={['manager', 'director', 'admin']}>
+                    <ConversionsPage />
+                  </ProtectedRoute>
+                } />
+                <Route path="/clients" element={
+                  <ProtectedRoute>
+                    <Clients />
                   </ProtectedRoute>
                 } />
                 <Route path="/manage-users" element={

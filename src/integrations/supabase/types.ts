@@ -53,6 +53,8 @@ export type Database = {
       }
       conversions: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           commission_amount: number | null
           commission_rate: number | null
           commissionable_amount: number | null
@@ -63,10 +65,19 @@ export type Database = {
           id: string
           lead_id: string
           notes: string | null
+          recommended_at: string | null
+          recommended_by: string | null
+          rejection_reason: string | null
           rep_id: string
           revenue_amount: number
+          status: Database["public"]["Enums"]["conversion_status"] | null
+          submitted_at: string | null
+          submitted_by: string | null
+          workflow_notes: string | null
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           commission_amount?: number | null
           commission_rate?: number | null
           commissionable_amount?: number | null
@@ -77,10 +88,19 @@ export type Database = {
           id?: string
           lead_id: string
           notes?: string | null
+          recommended_at?: string | null
+          recommended_by?: string | null
+          rejection_reason?: string | null
           rep_id: string
           revenue_amount: number
+          status?: Database["public"]["Enums"]["conversion_status"] | null
+          submitted_at?: string | null
+          submitted_by?: string | null
+          workflow_notes?: string | null
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           commission_amount?: number | null
           commission_rate?: number | null
           commissionable_amount?: number | null
@@ -91,8 +111,15 @@ export type Database = {
           id?: string
           lead_id?: string
           notes?: string | null
+          recommended_at?: string | null
+          recommended_by?: string | null
+          rejection_reason?: string | null
           rep_id?: string
           revenue_amount?: number
+          status?: Database["public"]["Enums"]["conversion_status"] | null
+          submitted_at?: string | null
+          submitted_by?: string | null
+          workflow_notes?: string | null
         }
         Relationships: [
           {
@@ -576,6 +603,7 @@ export type Database = {
       }
     }
     Enums: {
+      conversion_status: "pending" | "recommended" | "approved" | "rejected"
       lead_status:
         | "new"
         | "contacted"
@@ -706,6 +734,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      conversion_status: ["pending", "recommended", "approved", "rejected"],
       lead_status: [
         "new",
         "contacted",

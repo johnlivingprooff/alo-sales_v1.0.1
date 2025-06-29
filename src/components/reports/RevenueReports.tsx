@@ -9,6 +9,8 @@ import { ReportFilters } from "./ReportFilters";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { toast } from "sonner";
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from "date-fns";
+import { exportBrandedCSV, exportTableToPDF, escapeCSV, formatCurrency } from "@/lib/exportUtils";
+import { REPORT_TITLES } from "@/lib/brandingConfig";
 
 export const RevenueReports = () => {
   const { user, userRole } = useAuth();
@@ -36,7 +38,8 @@ export const RevenueReports = () => {
             source
           ),
           profiles!inner(full_name, email)
-        `);
+        `)
+        .eq('status', 'approved'); // Only include approved conversions for revenue reports
 
       // Filter by user if not manager/admin
       if (!['manager', 'director', 'admin'].includes(userRole || '')) {
@@ -174,52 +177,66 @@ export const RevenueReports = () => {
       toast.error("No data to export");
       return;
     }
-    // Wait for conversion if not ready
     if (!convertedExportRows) {
       toast.error("Currency conversion in progress, please try again in a moment.");
       return;
     }
-    const csvContent = [
-      ['Report Type', 'Revenue Analysis'],
-      ['Period', `${dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : ''} to ${dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : ''}`],
-      [''],
-      ['Monthly Revenue'],
-      ['Month', 'Revenue', 'Commission', 'Conversions'],
-      ...convertedExportRows.map(item => [
-        item.month,
-        item.revenue,
-        item.commission,
-        item.conversions
-      ]),
-      [''],
-      ['Individual Conversions'],
-      ['Date', 'Company', 'Revenue', 'Commission', 'Currency', 'Sales Rep'],
-      ...revenueData.conversions.map(conv => [
-        format(new Date(conv.conversion_date), 'yyyy-MM-dd'),
-        conv.leads?.company_name || 'Unknown',
-        conv.revenue_amount,
-        conv.commission_amount || 0,
-        conv.currency || 'USD',
-        conv.profiles?.full_name || conv.profiles?.email || 'Unknown'
-      ]),
-      [''],
-      ['Currency Breakdown'],
-      ['Currency', 'Revenue', 'Conversions'],
-      ...revenueData.currencyData.map(item => [
-        item.currency,
-        item.revenue,
-        item.conversions
-      ])
-    ].map(row => row.join(',')).join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `revenue-report-${format(new Date(), 'yyyy-MM-dd')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Report exported successfully!");
+    // Prepare CSV data sections
+    const monthlyData = convertedExportRows.map(item => [
+      escapeCSV(item.month),
+      item.revenue.toFixed(2),
+      item.commission.toFixed(2),
+      item.conversions.toString()
+    ].join(','));
+
+    const conversionsData = revenueData.conversions.map(conv => [
+      format(new Date(conv.conversion_date), 'yyyy-MM-dd'),
+      escapeCSV(conv.leads?.company_name || 'Unknown'),
+      conv.revenue_amount.toFixed(2),
+      (conv.commission_amount || 0).toFixed(2),
+      escapeCSV(conv.currency || 'USD'),
+      escapeCSV(conv.profiles?.full_name || conv.profiles?.email || 'Unknown')
+    ].join(','));
+
+    const currencyData = revenueData.currencyData.map(item => [
+      escapeCSV(item.currency),
+      item.revenue.toFixed(2),
+      item.conversions.toString()
+    ].join(','));
+
+    // Combine all sections
+    const allData = [
+      '',
+      'Monthly Revenue',
+      'Month,Revenue,Commission,Conversions',
+      ...monthlyData,
+      '',
+      'Individual Conversions',
+      'Date,Company,Revenue,Commission,Currency,Sales Rep',
+      ...conversionsData,
+      '',
+      'Currency Breakdown',
+      'Currency,Revenue,Conversions',
+      ...currencyData
+    ];
+
+    exportBrandedCSV(
+      allData,
+      [], // Headers are included in the data sections
+      'revenue-report',
+      REPORT_TITLES.revenue,
+      dateRange
+    );
+  };
+
+  const exportReportPDF = async () => {
+    await exportTableToPDF(
+      'revenue-charts',
+      'revenue-report',
+      REPORT_TITLES.revenue,
+      dateRange
+    );
   };
 
   return (
@@ -228,6 +245,7 @@ export const RevenueReports = () => {
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
         onExport={exportReport}
+        onExportPDF={exportReportPDF}
         exportLabel="Export Revenue Report"
         additionalFilters={
           <Select value={groupBy} onValueChange={setGroupBy}>
@@ -249,28 +267,40 @@ export const RevenueReports = () => {
           <div className="text-2xl font-bold">
             {convertedTotals ? `${convertedTotals.base} ${convertedTotals.revenue.toLocaleString()}` : '...'}
           </div>
-          <div className="text-sm text-gray-600">Total Revenue</div>
+          <div className="text-sm text-gray-600">Approved Revenue</div>
+          <div className="text-xs text-gray-500 mt-1">
+            Only approved conversions counted
+          </div>
         </Card>
         <Card className="p-4">
           <div className="text-2xl font-bold">
             {convertedTotals ? `${convertedTotals.base} ${convertedTotals.commission.toLocaleString()}` : '...'}
           </div>
-          <div className="text-sm text-gray-600">Total Commission</div>
+          <div className="text-sm text-gray-600">Approved Commission</div>
+          <div className="text-xs text-gray-500 mt-1">
+            Only approved conversions counted
+          </div>
         </Card>
         <Card className="p-4">
           <div className="text-2xl font-bold">
             {convertedTotals ? `${convertedTotals.avgCommissionRate.toFixed(1)}%` : '...'}
           </div>
           <div className="text-sm text-gray-600">Avg Commission Rate</div>
+          <div className="text-xs text-gray-500 mt-1">
+            Based on approved conversions
+          </div>
         </Card>
         <Card className="p-4">
           <div className="text-2xl font-bold">{revenueData?.conversions?.length || 0}</div>
-          <div className="text-sm text-gray-600">Total Conversions</div>
+          <div className="text-sm text-gray-600">Approved Conversions</div>
+          <div className="text-xs text-gray-500 mt-1">
+            Only approved conversions shown
+          </div>
         </Card>
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" id="revenue-charts">
         <Card className="p-6">
           <h3 className="text-lg font-semibold mb-4">Monthly Revenue Trend</h3>
           {isLoading ? (

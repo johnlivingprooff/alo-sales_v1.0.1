@@ -3,7 +3,9 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
+import { usePendingConversionsCount } from "@/hooks/useConversions";
 import { 
   LayoutDashboard, 
   FileText, 
@@ -12,7 +14,8 @@ import {
   LogOut,
   User,
   Shield,
-  UserCog
+  UserCog,
+  TrendingUp
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,6 +26,7 @@ export const Navigation = () => {
   const navigate = useNavigate();
   const { user, userRole, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { data: pendingCount } = usePendingConversionsCount();
 
   // Get user profile for avatar
   const { data: profile } = useQuery({
@@ -62,6 +66,7 @@ export const Navigation = () => {
   const canManageUsers = ['admin', 'director'].includes(userRole || '');
   const isManager = userRole === 'manager';
   const isAdminOrDirector = ['admin', 'director'].includes(userRole || '');
+  const canViewConversions = ['manager', 'director', 'admin'].includes(userRole || '');
 
   return (
     <nav className="bg-white/80 backdrop-blur-lg border-b border-gray-200/50 sticky top-0 z-40 w-full">
@@ -96,23 +101,42 @@ export const Navigation = () => {
                   to="/manage-team"
                   className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive('/manage-team') ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
                 >
-                  <UserCog className="h-4 w-4" /> Manage Team
+                  <UserCog className="h-4 w-4" /> Team
                 </Link>
               )}
+              {canViewConversions && (
+                <Link
+                  to="/conversions"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors relative ${isActive('/conversions') ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+                >
+                  <TrendingUp className="h-4 w-4" /> Conversions&nbsp;
+                  {pendingCount && pendingCount > 0 && (
+                    <Badge className="ml-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-red-500 hover:bg-red-600">
+                      {pendingCount > 9 ? "9+" : pendingCount}
+                    </Badge>
+                  )}
+                </Link>
+              )}
+              <Link
+                to="/clients"
+                className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive('/clients') ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+              >
+                <Users className="h-4 w-4" /> Clients
+              </Link>
               <Link
                 to="/reports"
                 className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive('/reports') ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
               >
                 <FileText className="h-4 w-4" /> Reports
               </Link>
-              {isAdminOrDirector && (
+              {/* {isAdminOrDirector && (
                 <Link
                   to="/admin"
                   className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive('/admin') ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
                 >
                   <Shield className="h-4 w-4" /> Admin
                 </Link>
-              )}
+              )} */}
             </div>
           </div>
 
@@ -131,7 +155,7 @@ export const Navigation = () => {
                   <User className="h-4 w-4" />
                 </AvatarFallback>
               </Avatar>
-              <span className="hidden sm:inline">Profile</span>
+              <span className="hidden sm:inline">Hi! {profile?.full_name}</span>
             </Link>
             <Link
               to="/settings"
@@ -170,6 +194,27 @@ export const Navigation = () => {
                   <UserCog className="h-4 w-4" /> Manage Team
                 </Link>
               )}
+              {canViewConversions && (
+                <Link
+                  to="/conversions"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive('/conversions') ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <TrendingUp className="h-4 w-4" /> Conversions
+                  {pendingCount && pendingCount > 0 && (
+                    <Badge className="ml-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-red-500 hover:bg-red-600">
+                      {pendingCount > 9 ? "9+" : pendingCount}
+                    </Badge>
+                  )}
+                </Link>
+              )}
+              <Link
+                to="/clients"
+                className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive('/clients') ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <Users className="h-4 w-4" /> Clients
+              </Link>
               <Link
                 to="/reports"
                 className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive('/reports') ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'}`}

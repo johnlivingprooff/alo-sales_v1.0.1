@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Target, Users, DollarSign, Calendar } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -12,9 +13,11 @@ import { LeadsDetailPage } from "../details/LeadsDetailPage";
 import { VisitsDetailPage } from "../details/VisitsDetailPage";
 import { ConversionsDetailPage } from "../details/ConversionsDetailPage";
 import { GoalsTable } from "../GoalsTable";
+import { ConversionsManagement } from "../ConversionsManagement";
+import { NotificationCenter } from "../notifications/NotificationCenter";
 import { getUserCurrencyContext, convertCurrency } from "@/lib/currency";
 
-type DetailView = 'dashboard' | 'leads' | 'visits' | 'conversions' | 'goals';
+type DetailView = 'dashboard' | 'leads' | 'visits' | 'conversions' | 'goals' | 'approval-center';
 
 export const ManagerDashboard = () => {
   const { user } = useAuth();
@@ -54,11 +57,12 @@ export const ManagerDashboard = () => {
         .eq('created_by', user.id)
         .gte('created_at', startDate.toISOString());
 
-      // Get conversions and revenue for the manager
+      // Get conversions and revenue for the manager - only approved conversions count
       const { data: conversions } = await supabase
         .from('conversions')
         .select('revenue_amount, currency')
         .eq('rep_id', user.id)
+        .eq('status', 'approved')
         .gte('conversion_date', startDate.toISOString().split('T')[0]);
 
       // Get user's base currency and convert revenue
@@ -136,6 +140,19 @@ export const ManagerDashboard = () => {
     );
   }
 
+  if (currentView === 'approval-center') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <Button onClick={() => setCurrentView('dashboard')} variant="outline">
+            ← Back to Dashboard
+          </Button>
+        </div>
+        <ConversionsManagement />
+      </div>
+    );
+  }
+
   const statCards = [
     {
       title: "Visits",
@@ -197,6 +214,17 @@ export const ManagerDashboard = () => {
           <Target className="h-4 w-4 mr-2" />
           Set Goals
         </Button>
+        <Link to="/clients">
+          <Button variant="outline">
+            <Users className="h-4 w-4 mr-2" />
+            View Clients
+          </Button>
+        </Link>
+        <Button onClick={() => setCurrentView('approval-center')} variant="outline" className="text-blue-600 border-blue-600 hover:bg-blue-50">
+          <Target className="h-4 w-4 mr-2" />
+          Approval Center
+        </Button>
+        {/* <NotificationCenter /> */}
       </div>
 
       {/* Period Selector */}

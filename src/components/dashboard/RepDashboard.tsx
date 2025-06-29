@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Target, Users, DollarSign, Calendar } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,6 +12,7 @@ import { SetGoalsForm } from "../forms/SetGoalsForm";
 import { LeadsDetailPage } from "../details/LeadsDetailPage";
 import { VisitsDetailPage } from "../details/VisitsDetailPage";
 import { ConversionsDetailPage } from "../details/ConversionsDetailPage";
+import { NotificationCenter } from "../notifications/NotificationCenter";
 import { getUserCurrencyContext, convertCurrency } from "@/lib/currency";
 
 type DetailView = 'dashboard' | 'leads' | 'visits' | 'conversions';
@@ -62,11 +64,12 @@ export const RepDashboard = () => {
         throw new Error("Failed to fetch leads count");
       }
 
-      // Get conversions and revenue (with currency)
+      // Get conversions and revenue (with currency) - only approved conversions count
       const { data: conversions } = await supabase
         .from('conversions')
         .select('revenue_amount, currency')
         .eq('rep_id', user.id)
+        .eq('status', 'approved')
         .gte('conversion_date', startDate.toISOString().split('T')[0]);
 
       console.log('conversions:', conversions);
@@ -191,6 +194,13 @@ export const RepDashboard = () => {
           <Target className="h-4 w-4 mr-2" />
           Set Goals
         </Button>
+        <Link to="/clients">
+          <Button variant="outline">
+            <Users className="h-4 w-4 mr-2" />
+            View Clients
+          </Button>
+        </Link>
+        {/* <NotificationCenter /> */}
       </div>
 
       {/* Period Selector */}

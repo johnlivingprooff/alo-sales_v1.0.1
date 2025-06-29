@@ -1,0 +1,6 @@
+// Alternative approach using public directory
+export const COMPANY_CONFIG = {
+  // ...other config...
+  logo: "/logo.png", // File in public directory
+  // ...rest of config...
+};

@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Download, Filter } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { CalendarIcon, Download, Filter, FileText, FileSpreadsheet } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ interface ReportFiltersProps {
   onDateRangeChange: (range: { from: Date | undefined; to: Date | undefined }) => void;
   additionalFilters?: React.ReactNode;
   onExport: () => void;
+  onExportPDF?: () => void;
   exportLabel?: string;
 }
 
@@ -25,6 +27,7 @@ export const ReportFilters = ({
   onDateRangeChange, 
   additionalFilters, 
   onExport,
+  onExportPDF,
   exportLabel = "Export Report"
 }: ReportFiltersProps) => {
   return (
@@ -77,10 +80,31 @@ export const ReportFilters = ({
           </div>
         </div>
 
-        <Button onClick={onExport} className="gap-2">
-          <Download className="h-4 w-4" />
-          {exportLabel}
-        </Button>
+        {onExportPDF ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="gap-2">
+                <Download className="h-4 w-4" />
+                {exportLabel}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onExport} className="gap-2">
+                <FileSpreadsheet className="h-4 w-4" />
+                Export as CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onExportPDF} className="gap-2">
+                <FileText className="h-4 w-4" />
+                Export as PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button onClick={onExport} className="gap-2">
+            <Download className="h-4 w-4" />
+            {exportLabel}
+          </Button>
+        )}
       </div>
     </Card>
   );

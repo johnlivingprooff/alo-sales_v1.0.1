@@ -1,15 +1,16 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { ValidatedInput, ValidatedTextarea } from "@/components/ui/validated-inputs";
+import { validationRules, useFormValidation } from "@/components/ui/form-validation";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserRole, useConversionActions } from "@/hooks/useConversions";
 import { useQuery as useReactQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { showSuccessToast, showErrorToast } from "@/components/notifications/NotificationToast";
 
 interface ConvertLeadFormProps {
   open: boolean;
@@ -27,12 +28,48 @@ export const ConvertLeadForm = ({
   onConversionComplete 
 }: ConvertLeadFormProps) => {
   const { user } = useAuth();
-  const [revenueAmount, setRevenueAmount] = useState("");
-  const [commissionRate, setCommissionRate] = useState("10");
-  const [conversionDate, setConversionDate] = useState(new Date().toISOString().split("T")[0]);
-  const [notes, setNotes] = useState("");
+  const { data: userRole } = useUserRole();
+  const { submitConversion } = useConversionActions();
   const [loading, setLoading] = useState(false);
   const [commissionData, setCommissionData] = useState<any>(null);
+
+  // Define validation schema
+  const validationSchema = {
+    revenueAmount: [
+      validationRules.required("Revenue amount is required"),
+      validationRules.currency(),
+      validationRules.positiveNumber("Revenue must be greater than 0")
+    ],
+    commissionRate: [
+      validationRules.required("Commission rate is required"),
+      validationRules.percentage(),
+      validationRules.minValue(0, "Commission rate cannot be negative"),
+      validationRules.maxValue(100, "Commission rate cannot exceed 100%")
+    ],
+    conversionDate: [
+      validationRules.required("Conversion date is required"),
+      validationRules.date()
+    ],
+    notes: [validationRules.maxLength(1000)]
+  };
+
+  // Use the form validation hook
+  const {
+    values,
+    errors,
+    setValue,
+    setTouched,
+    validateForm,
+    hasErrors
+  } = useFormValidation(
+    {
+      revenueAmount: "",
+      commissionRate: "10",
+      conversionDate: new Date().toISOString().split("T")[0],
+      notes: ""
+    },
+    validationSchema
+  );
 
   // Fetch deduction settings (global or for this user/team)
   const { data: deductionSettings, isLoading: deductionsLoading } = useReactQuery({
@@ -49,21 +86,21 @@ export const ConvertLeadForm = ({
 
   // Fetch commission calculation when revenue or rate changes
   const { data: calculationResult, refetch: recalculate } = useReactQuery({
-    queryKey: ['commission-calculation', revenueAmount, commissionRate, deductionSettings],
+    queryKey: ['commission-calculation', values.revenueAmount, values.commissionRate, deductionSettings],
     queryFn: async () => {
-      if (!revenueAmount || !commissionRate || !Number.isFinite(parseFloat(revenueAmount)) || !Number.isFinite(parseFloat(commissionRate))) return null;
+      if (!values.revenueAmount || !values.commissionRate || !Number.isFinite(parseFloat(values.revenueAmount)) || !Number.isFinite(parseFloat(values.commissionRate))) return null;
       // Pass deduction settings if your RPC supports it, else just display
       const { data, error } = await supabase
         .rpc('calculate_commission_with_deductions', {
-          revenue_amount: parseFloat(revenueAmount),
-          commission_rate: parseFloat(commissionRate),
+          revenue_amount: parseFloat(values.revenueAmount),
+          commission_rate: parseFloat(values.commissionRate),
           currency: leadData?.currency || 'USD',
           deduction_settings: deductionSettings ?? null
         });
       if (error) throw error;
       return data?.[0] || null;
     },
-    enabled: !!revenueAmount && !!commissionRate && Number.isFinite(parseFloat(revenueAmount)) && Number.isFinite(parseFloat(commissionRate)) && parseFloat(revenueAmount) > 0 && !!deductionSettings
+    enabled: !!values.revenueAmount && !!values.commissionRate && Number.isFinite(parseFloat(values.revenueAmount)) && Number.isFinite(parseFloat(values.commissionRate)) && parseFloat(values.revenueAmount) > 0 && !!deductionSettings
   });
 
   // Fetch user's default commission rate
@@ -81,7 +118,7 @@ export const ConvertLeadForm = ({
     enabled: !!user?.id && open,
     onSuccess: (data) => {
       if (data?.default_commission_rate !== undefined && data?.default_commission_rate !== null) {
-        setCommissionRate(String(data.default_commission_rate));
+        setValue('commissionRate', String(data.default_commission_rate));
       }
     }
   });
@@ -96,26 +133,27 @@ export const ConvertLeadForm = ({
     e.preventDefault();
     if (!user || !leadId) return;
 
+    if (!validateForm()) {
+      toast.error('Please fix the errors before submitting');
+      return;
+    }
+
     setLoading(true);
     try {
       const conversionData = {
         lead_id: leadId,
-        rep_id: user.id,
-        revenue_amount: parseFloat(revenueAmount),
-        commission_rate: parseFloat(commissionRate),
+        revenue_amount: parseFloat(values.revenueAmount),
+        commission_rate: parseFloat(values.commissionRate),
         commission_amount: commissionData?.final_commission || 0,
-        commissionable_amount: commissionData?.commissionable_amount || parseFloat(revenueAmount),
+        commissionable_amount: commissionData?.commissionable_amount || parseFloat(values.revenueAmount),
         deductions_applied: commissionData?.deductions_applied || [],
-        conversion_date: conversionDate,
+        conversion_date: values.conversionDate,
         currency: leadData?.currency || 'USD',
-        notes
+        notes: values.notes
       };
 
-      const { error } = await supabase
-        .from('conversions')
-        .insert(conversionData);
-
-      if (error) throw error;
+      // Use the new submission workflow
+      await submitConversion(conversionData);
 
       // Update lead status to closed_won
       const { error: leadError } = await supabase
@@ -125,7 +163,11 @@ export const ConvertLeadForm = ({
 
       if (leadError) throw leadError;
 
-      toast.success('Lead converted successfully!');
+      const roleText = userRole?.role === 'rep' 
+        ? 'Lead submitted for recommendation and approval!' 
+        : 'Lead converted successfully!';
+      
+      showSuccessToast(roleText);
       onOpenChange(false);
       if (onConversionComplete) onConversionComplete();
       
@@ -133,17 +175,17 @@ export const ConvertLeadForm = ({
       resetForm();
     } catch (error) {
       console.error('Error converting lead:', error);
-      toast.error('Failed to convert lead');
+      showErrorToast('Failed to convert lead');
     } finally {
       setLoading(false);
     }
   };
 
   const resetForm = () => {
-    setRevenueAmount("");
-    setCommissionRate("10");
-    setConversionDate(new Date().toISOString().split("T")[0]);
-    setNotes("");
+    setValue('revenueAmount', '');
+    setValue('commissionRate', '10');
+    setValue('conversionDate', new Date().toISOString().split("T")[0]);
+    setValue('notes', '');
     setCommissionData(null);
   };
 
@@ -187,33 +229,37 @@ export const ConvertLeadForm = ({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="revenueAmount">Actual Revenue Amount *</Label>
-              <Input
-                id="revenueAmount"
-                type="number"
-                step="0.01"
-                min="0"
-                value={revenueAmount}
-                onChange={(e) => setRevenueAmount(e.target.value)}
-                required
-                placeholder="0.00"
-              />
-            </div>
+            <ValidatedInput
+              label="Actual Revenue Amount"
+              name="revenueAmount"
+              type="number"
+              step="0.01"
+              min="0"
+              value={values.revenueAmount}
+              onValueChange={(value) => setValue("revenueAmount", value)}
+              onBlur={() => setTouched("revenueAmount")}
+              validationRules={validationSchema.revenueAmount}
+              error={errors.revenueAmount?.[0]}
+              required
+              helpText="The actual revenue amount from this conversion"
+              placeholder="0.00"
+            />
 
-            <div className="space-y-2">
-              <Label htmlFor="commissionRate">Commission Rate (%)</Label>
-              <Input
-                id="commissionRate"
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                value={commissionRate}
-                onChange={(e) => setCommissionRate(e.target.value)}
-                required
-              />
-            </div>
+            <ValidatedInput
+              label="Commission Rate (%)"
+              name="commissionRate"
+              type="number"
+              step="0.01"
+              min="0"
+              max="100"
+              value={values.commissionRate}
+              onValueChange={(value) => setValue("commissionRate", value)}
+              onBlur={() => setTouched("commissionRate")}
+              validationRules={validationSchema.commissionRate}
+              error={errors.commissionRate?.[0]}
+              required
+              helpText="Commission rate as a percentage (0-100)"
+            />
           </div>
 
           {commissionData && (
@@ -222,7 +268,7 @@ export const ConvertLeadForm = ({
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span>Revenue Amount:</span>
-                  <span className="font-medium">{leadData?.currency || 'USD'} {parseFloat(revenueAmount).toFixed(2)}</span>
+                  <span className="font-medium">{leadData?.currency || 'USD'} {parseFloat(values.revenueAmount).toFixed(2)}</span>
                 </div>
                 
                 {commissionData.deductions_applied && commissionData.deductions_applied.length > 0 && (
@@ -249,7 +295,7 @@ export const ConvertLeadForm = ({
                 </div>
                 
                 <div className="flex justify-between">
-                  <span className="font-medium">Final Commission ({commissionRate}%):</span>
+                  <span className="font-medium">Final Commission ({values.commissionRate}%):</span>
                   <Badge className="bg-green-100 text-green-800">
                     {leadData?.currency || 'USD'} {parseFloat(commissionData.final_commission).toFixed(2)}
                   </Badge>
@@ -258,34 +304,43 @@ export const ConvertLeadForm = ({
             </Card>
           )}
 
-          <div className="space-y-2">
-            <Label htmlFor="conversionDate">Conversion Date</Label>
-            <Input
-              id="conversionDate"
-              type="date"
-              value={conversionDate}
-              onChange={(e) => setConversionDate(e.target.value)}
-              required
-            />
-          </div>
+          <ValidatedInput
+            label="Conversion Date"
+            name="conversionDate"
+            type="date"
+            value={values.conversionDate}
+            onValueChange={(value) => setValue("conversionDate", value)}
+            onBlur={() => setTouched("conversionDate")}
+            validationRules={validationSchema.conversionDate}
+            error={errors.conversionDate?.[0]}
+            required
+            helpText="Date when the conversion occurred"
+          />
 
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Any additional notes about this conversion..."
-              className="min-h-[80px]"
-            />
-          </div>
+          <ValidatedTextarea
+            label="Notes"
+            name="notes"
+            value={values.notes}
+            onValueChange={(value) => setValue("notes", value)}
+            onBlur={() => setTouched("notes")}
+            validationRules={validationSchema.notes}
+            error={errors.notes?.[0]}
+            helpText="Additional notes about this conversion"
+            placeholder="Any additional notes about this conversion..."
+            rows={3}
+          />
 
           <div className="flex justify-end space-x-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || !commissionData}>
-              {loading ? "Converting..." : "Convert Lead"}
+            <Button type="submit" disabled={loading || !commissionData || hasErrors}>
+              {loading 
+                ? "Submitting..." 
+                : userRole?.role === 'rep' 
+                  ? "Submit for Approval"
+                  : "Convert Lead"
+              }
             </Button>
           </div>
         </form>

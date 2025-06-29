@@ -5,9 +5,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowLeft, DollarSign, TrendingUp, Calendar } from "lucide-react";
+import { ArrowLeft, DollarSign, TrendingUp, Calendar, CheckCircle, XCircle, Clock, AlertTriangle, Edit3 } from "lucide-react";
 import { getUserCurrencyContext, convertCurrency } from "@/lib/currency";
 import { useEffect, useState } from "react";
+import { useUserRole } from "@/hooks/useConversions";
+import { AmendConversionForm } from "@/components/forms/AmendConversionForm";
+import type { Database } from "@/integrations/supabase/types";
+
+type ConversionStatus = Database["public"]["Enums"]["conversion_status"];
 
 interface ConversionsDetailPageProps {
   onBack: () => void;
@@ -15,8 +20,14 @@ interface ConversionsDetailPageProps {
 
 export const ConversionsDetailPage = ({ onBack }: ConversionsDetailPageProps) => {
   const { user } = useAuth();
+  const { data: userRole } = useUserRole();
+  
+  const [amendDialog, setAmendDialog] = useState<{
+    open: boolean;
+    conversion: any;
+  }>({ open: false, conversion: null });
 
-  const { data: conversions, isLoading } = useQuery({
+  const { data: conversions, isLoading, refetch } = useQuery({
     queryKey: ['user-conversions', user?.id],
     queryFn: async () => {
       if (!user) return [];
@@ -40,17 +51,21 @@ export const ConversionsDetailPage = ({ onBack }: ConversionsDetailPageProps) =>
     enabled: !!user
   });
 
-  // Currency conversion logic
+  // Currency conversion logic - only include approved conversions for totals
   const [convertedTotals, setConvertedTotals] = useState<{ revenue: number, commission: number, base: string } | null>(null);
   useEffect(() => {
     async function convertAll() {
       if (!user || !conversions) return;
       const { base } = await getUserCurrencyContext(user);
+      
+      // Only include approved conversions in totals
+      const approvedConversions = conversions.filter(conv => conv.status === 'approved');
+      
       let revenue = 0;
       let commission = 0;
-      if (conversions.length > 0) {
+      if (approvedConversions.length > 0) {
         const revenueArr = await Promise.all(
-          conversions.map(async (conv) => {
+          approvedConversions.map(async (conv) => {
             const amount = Number(conv.revenue_amount) || 0;
             const fromCurrency = conv.currency || 'USD';
             try {
@@ -62,7 +77,7 @@ export const ConversionsDetailPage = ({ onBack }: ConversionsDetailPageProps) =>
         );
         revenue = revenueArr.reduce((sum, val) => sum + val, 0);
         const commissionArr = await Promise.all(
-          conversions.map(async (conv) => {
+          approvedConversions.map(async (conv) => {
             const amount = Number(conv.commission_amount) || 0;
             const fromCurrency = conv.currency || 'USD';
             try {
@@ -100,6 +115,40 @@ export const ConversionsDetailPage = ({ onBack }: ConversionsDetailPageProps) =>
     })(),
   }));
 
+  const getStatusIcon = (status: ConversionStatus) => {
+    switch (status) {
+      case "pending":
+        return <Clock className="w-4 h-4 text-yellow-500" />;
+      case "recommended":
+        return <AlertTriangle className="w-4 h-4 text-blue-500" />;
+      case "approved":
+        return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case "rejected":
+        return <XCircle className="w-4 h-4 text-red-500" />;
+      default:
+        return <Clock className="w-4 h-4 text-gray-500" />;
+    }
+  };
+
+  const getStatusColor = (status: ConversionStatus) => {
+    switch (status) {
+      case "pending":
+        return "bg-yellow-100 text-yellow-800";
+      case "recommended":
+        return "bg-blue-100 text-blue-800";
+      case "approved":
+        return "bg-green-100 text-green-800";
+      case "rejected":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
+  };
+
+  const handleAmendConversion = (conversion: any) => {
+    setAmendDialog({ open: true, conversion });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -123,7 +172,12 @@ export const ConversionsDetailPage = ({ onBack }: ConversionsDetailPageProps) =>
           {isLoading ? (
             <div className="h-7 w-20 bg-gray-200 rounded animate-pulse" />
           ) : (
-            <p className="text-2xl font-bold">{conversions?.length || 0}</p>
+            <div>
+              <p className="text-2xl font-bold">{conversions?.length || 0}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {conversions?.filter(c => c.status === 'approved').length || 0} approved
+              </p>
+            </div>
           )}
         </div>
           </div>
@@ -136,13 +190,18 @@ export const ConversionsDetailPage = ({ onBack }: ConversionsDetailPageProps) =>
           <DollarSign className="h-5 w-5 text-blue-600" />
         </div>
         <div>
-          <p className="text-sm text-gray-600">Total Revenue</p>
+          <p className="text-sm text-gray-600">Approved Revenue</p>
           {isLoading || !convertedTotals ? (
             <div className="h-7 w-32 bg-gray-200 rounded animate-pulse" />
           ) : (
-            <p className="text-2xl font-bold">
-          {convertedTotals.base} {convertedTotals.revenue.toLocaleString()}
-            </p>
+            <div>
+              <p className="text-2xl font-bold">
+                {convertedTotals.base} {convertedTotals.revenue.toLocaleString()}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Only approved conversions counted
+              </p>
+            </div>
           )}
         </div>
           </div>
@@ -155,13 +214,18 @@ export const ConversionsDetailPage = ({ onBack }: ConversionsDetailPageProps) =>
           <TrendingUp className="h-5 w-5 text-purple-600" />
         </div>
         <div>
-          <p className="text-sm text-gray-600">Total Commission</p>
+          <p className="text-sm text-gray-600">Approved Commission</p>
           {isLoading || !convertedTotals ? (
             <div className="h-7 w-32 bg-gray-200 rounded animate-pulse" />
           ) : (
-            <p className="text-2xl font-bold">
-          {convertedTotals.base} {convertedTotals.commission.toLocaleString()}
-            </p>
+            <div>
+              <p className="text-2xl font-bold">
+                {convertedTotals.base} {convertedTotals.commission.toLocaleString()}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Only approved conversions counted
+              </p>
+            </div>
           )}
         </div>
           </div>
@@ -180,7 +244,9 @@ export const ConversionsDetailPage = ({ onBack }: ConversionsDetailPageProps) =>
                 <TableHead>Revenue</TableHead>
                 <TableHead>Commissionable Amount</TableHead>
                 <TableHead>Commission</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Notes</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -208,6 +274,8 @@ export const ConversionsDetailPage = ({ onBack }: ConversionsDetailPageProps) =>
                       <span className="font-semibold text-green-600">
                         {conversion.currency} {Number(conversion.revenue_amount).toLocaleString()}
                       </span>
+                      {conversion.status === 'approved' && <CheckCircle className="h-4 w-4 text-green-500" />}
+                      {conversion.status === 'rejected' && <XCircle className="h-4 w-4 text-red-500" />}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -224,24 +292,52 @@ export const ConversionsDetailPage = ({ onBack }: ConversionsDetailPageProps) =>
                   </TableCell>
                   <TableCell>
                     {conversion.commission_amount ? (
-                      <div>
-                        <span className="font-medium">
-                          {conversion.currency} {Number(conversion.commission_amount).toLocaleString()}
-                        </span>
-                        {conversion.commission_rate && (
-                          <p className="text-xs text-gray-600">
-                            ({conversion.commission_rate}%)
-                          </p>
-                        )}
+                      <div className="flex items-center gap-1">
+                        <div>
+                          <span className="font-medium">
+                            {conversion.currency} {Number(conversion.commission_amount).toLocaleString()}
+                          </span>
+                          {conversion.commission_rate && (
+                            <p className="text-xs text-gray-600">
+                              ({conversion.commission_rate}%)
+                            </p>
+                          )}
+                        </div>
+                        {conversion.status === 'approved' && <CheckCircle className="h-4 w-4 text-green-500" />}
+                        {conversion.status === 'rejected' && <XCircle className="h-4 w-4 text-red-500" />}
                       </div>
                     ) : (
                       <span className="text-gray-400">-</span>
                     )}
                   </TableCell>
                   <TableCell>
+                    <Badge className={`flex items-center gap-1 ${getStatusColor(conversion.status || 'pending')}`}>
+                      {getStatusIcon(conversion.status || 'pending')}
+                      {(conversion.status || 'pending').replace('_', ' ').toUpperCase()}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
                     <div className="max-w-xs truncate">
                       {conversion.notes || 'No notes'}
+                      {conversion.rejection_reason && (
+                        <div className="text-xs text-red-600 mt-1">
+                          Rejected: {conversion.rejection_reason}
+                        </div>
+                      )}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {conversion.status === 'rejected' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleAmendConversion(conversion)}
+                        className="text-orange-600 border-orange-600 hover:bg-orange-50"
+                      >
+                        <Edit3 className="h-4 w-4 mr-1" />
+                        Amend
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -255,6 +351,16 @@ export const ConversionsDetailPage = ({ onBack }: ConversionsDetailPageProps) =>
           </div>
         )}
       </Card>
+
+      <AmendConversionForm
+        open={amendDialog.open}
+        onOpenChange={(open) => !open && setAmendDialog({ open: false, conversion: null })}
+        conversion={amendDialog.conversion}
+        onAmendComplete={() => {
+          setAmendDialog({ open: false, conversion: null });
+          refetch();
+        }}
+      />
     </div>
   );
 };

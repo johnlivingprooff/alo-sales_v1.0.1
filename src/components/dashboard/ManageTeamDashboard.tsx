@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Users, TrendingUp, Target, DollarSign } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,9 @@ import { DetailedLeadsTable } from "../tables/DetailedLeadsTable";
 import { DetailedConversionsTable } from "../tables/DetailedConversionsTable";
 import { DetailedUsersTableDialog } from "../tables/DetailedUsersTable";
 import { DetailedVisitsTable } from "../tables/DetailedVisitsTable";
+import { ConversionsManagement } from "../ConversionsManagement";
+
+type ManageTeamView = 'dashboard' | 'approval-center';
 
 export const ManageTeamDashboard = () => {
   const { user } = useAuth();
@@ -21,6 +25,7 @@ export const ManageTeamDashboard = () => {
   const [showConversionsTable, setShowConversionsTable] = useState(false);
   const [showUsersTable, setShowUsersTable] = useState(false);
   const [showVisitsTable, setShowVisitsTable] = useState(false);
+  const [currentView, setCurrentView] = useState<ManageTeamView>('dashboard');
 
   // Fetch team overview stats
   const { data: teamStats, isLoading } = useQuery({
@@ -54,10 +59,11 @@ export const ManageTeamDashboard = () => {
         .select('*', { count: 'exact', head: true })
         .gte('created_at', startDate.toISOString());
 
-      // Get total conversions and revenue
+      // Get total conversions and revenue - only approved conversions count
       const { data: conversions } = await supabase
         .from('conversions')
         .select('revenue_amount, currency')
+        .eq('status', 'approved')
         .gte('conversion_date', startDate.toISOString().split('T')[0]);
 
       return {
@@ -134,11 +140,12 @@ export const ManageTeamDashboard = () => {
             .eq('created_by', rep.id)
             .gte('created_at', startDate.toISOString());
 
-          // Get conversions and revenue for this rep
+          // Get conversions and revenue for this rep - only approved conversions count
           const { data: conversions } = await supabase
             .from('conversions')
             .select('revenue_amount, currency')
             .eq('rep_id', rep.id)
+            .eq('status', 'approved')
             .gte('conversion_date', startDate.toISOString().split('T')[0]);
 
           // Convert revenue to user's base currency
@@ -245,11 +252,42 @@ export const ManageTeamDashboard = () => {
     );
   }
 
+  if (currentView === 'approval-center') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <Button onClick={() => setCurrentView('dashboard')} variant="outline">
+            ← Back to Dashboard
+          </Button>
+        </div>
+        <ConversionsManagement />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Team Overview</h2>
-        <p className="text-gray-600">Monitor your team's performance and progress</p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Team Overview</h2>
+          <p className="text-gray-600">Monitor your team's performance and progress</p>
+        </div>
+        <div className="flex gap-2">
+          <Link to="/clients">
+            <Button variant="outline">
+              <Users className="h-4 w-4 mr-2" />
+              View Clients
+            </Button>
+          </Link>
+          <Button 
+            onClick={() => setCurrentView('approval-center')} 
+            variant="outline" 
+            className="text-blue-600 border-blue-600 hover:bg-blue-50"
+          >
+            <Target className="h-4 w-4 mr-2" />
+            Approval Center
+          </Button>
+        </div>
       </div>
 
       {/* Period Selector */}

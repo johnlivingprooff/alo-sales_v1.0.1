@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
-import { Users, Building, TrendingUp, DollarSign, UserPlus, Activity } from "lucide-react";
+import { Users, Building, TrendingUp, DollarSign, UserPlus, Activity, Target } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,9 @@ import { DetailedLeadsTable } from "../tables/DetailedLeadsTable";
 import { DetailedConversionsTable } from "../tables/DetailedConversionsTable";
 import { DetailedVisitsTable } from "../tables/DetailedVisitsTable";
 import { DetailedUsersTableDialog } from "../tables/DetailedUsersTable";
+import { ConversionsManagement } from "../ConversionsManagement";
+
+type AdminView = 'dashboard' | 'approval-center';
 
 export const AdminDashboard = () => {
   const { user } = useAuth();
@@ -23,6 +26,7 @@ export const AdminDashboard = () => {
   const [showConversionsTable, setShowConversionsTable] = useState(false);
   const [showVisitsTable, setShowVisitsTable] = useState(false);
   const [showUsersTable, setShowUsersTable] = useState(false);
+  const [currentView, setCurrentView] = useState<AdminView>('dashboard');
 
   // Fetch organization overview stats
   const { data: orgStats, isLoading } = useQuery({
@@ -56,10 +60,11 @@ export const AdminDashboard = () => {
         .select('*', { count: 'exact', head: true })
         .gte('created_at', startDate.toISOString());
 
-      // Get total conversions and revenue
+      // Get total conversions and revenue - only approved conversions count
       const { data: conversions } = await supabase
         .from('conversions')
         .select('revenue_amount, currency')
+        .eq('status', 'approved')
         .gte('conversion_date', startDate.toISOString().split('T')[0]);
 
       return {
@@ -228,6 +233,19 @@ export const AdminDashboard = () => {
     );
   }
 
+  if (currentView === 'approval-center') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <Button onClick={() => setCurrentView('dashboard')} variant="outline">
+            ← Back to Dashboard
+          </Button>
+        </div>
+        <ConversionsManagement />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-start">
@@ -235,12 +253,28 @@ export const AdminDashboard = () => {
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Organization Overview</h2>
           <p className="text-gray-600">Monitor organization-wide performance and manage system settings</p>
         </div>
-        <Link to="/manage-users">
-          <Button className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600">
-            <UserPlus className="h-4 w-4 mr-2" />
-            Manage Users
+        <div className="flex gap-2">
+          <Button 
+            onClick={() => setCurrentView('approval-center')} 
+            variant="outline" 
+            className="text-blue-600 border-blue-600 hover:bg-blue-50"
+          >
+            <Target className="h-4 w-4 mr-2" />
+            Approval Center
           </Button>
-        </Link>
+          <Link to="/clients">
+            <Button variant="outline">
+              <Users className="h-4 w-4 mr-2" />
+              View Clients
+            </Button>
+          </Link>
+          <Link to="/manage-users">
+            <Button className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600">
+              <UserPlus className="h-4 w-4 mr-2" />
+              Manage Users
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Period Selector */}
