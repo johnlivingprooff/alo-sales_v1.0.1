@@ -17,6 +17,7 @@ import Admin from "./pages/Admin";
 import { ConversionsPage } from "./pages/Conversions";
 import { Clients } from "./pages/Clients";
 import NotFound from "./pages/NotFound";
+import { SpeedInsights } from "@vercel/speed-insights/react"
 
 const queryClient = new QueryClient();
 
@@ -26,6 +27,7 @@ function App() {
       <ThemeProvider defaultTheme="light" storageKey="sales-app-theme">
         <AuthProvider>
           <TooltipProvider>
+            <SpeedInsights />
             <Toaster />
             <BrowserRouter>
               <Routes>
