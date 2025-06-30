@@ -75,7 +75,7 @@ const ConversionItem = ({ conversion, userRole, onAction }: ConversionItemProps)
               {getStatusIcon(conversion.status)}
               {conversion.status?.replace('_', ' ').toUpperCase() || 'PENDING'}
             </Badge>
-            {getApprovalStatusBadge()}
+            {/* {getApprovalStatusBadge()} */}
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
